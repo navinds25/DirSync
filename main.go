@@ -8,20 +8,47 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-var watcher *fsnotify.Watcher
-
 func main() {
+	mainPath := "/home/joker/go/src/github.com/navinds25/DirSync/test_dir"
+
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		fmt.Println("Error, ", err)
 	}
 	defer watcher.Close()
 
-	if err := filepath.Walk("/home/joker/go/src/dir_sync/test_dir/", watchDir); err != nil {
-		fmt.Println("Error, ", err)
+	//open the directory file
+	dir, err := os.Open(mainPath)
+	if err != nil {
+		fmt.Printf("Error while opening mainPath %s, Error %s \n", mainPath, err)
+	}
+	defer dir.Close()
+
+	// to read the contents of the directory file
+	mainContent, err := dir.Readdir(-1)
+	if err != nil {
+		fmt.Printf("Error listing contents of %s , Exception: %s \n", mainPath, err)
 	}
 
-	done := make(chan bool)
+	// Add the main path to the watchlist
+	if err = watcher.Add(mainPath); err != nil {
+		fmt.Printf("Error adding main dir %s to watchlist Error: %s \n", mainPath, err)
+	}
+
+	// looping through contents of main dir to find sub directories
+	for _, content := range mainContent {
+		if content.Mode().IsDir() {
+			path := filepath.Join(mainPath, content.Name())
+			fmt.Println("Found Dir", path)
+			// add it to watcher
+			if err := watcher.Add(path); err != nil {
+				fmt.Printf("Error adding dir %s Error: %s \n", path, err)
+			}
+		}
+	}
+
+	// channel+ go routine + anonymous func for watching directories
+	dirwatch := make(chan bool)
 
 	go func() {
 		for {
@@ -34,14 +61,5 @@ func main() {
 		}
 	}()
 
-	<-done
-
-}
-
-func watchDir(path string, fi os.FileInfo, err error) error {
-	if fi.Mode().IsDir() {
-		err = watcher.Add(path)
-		fmt.Println("watchDir Error, ", err)
-	}
-	return err
+	<-dirwatch
 }
